@@ -13,6 +13,7 @@ const EMAIL_SENDER: &str = "email sender";
 const SMTP_SERVER: &str = "smtp server";
 const EMAIL_PASSWORD: &str = "password";
 
+static mut SMART_MONEYS: Option<&AddressHashSet> = None;
 
 async fn send_email(smart_money: Address, tx_hash: TxHash) {
     let email = Message::builder()
@@ -36,9 +37,12 @@ async fn main() -> Result<()> {
     let rpc_url = "wss://eth-mainnet.g.alchemy.com/v2/LttRLGRc066mddQWggs0tttdq9FwmTZh";  // mainnet
     let ws = WsConnect::new(rpc_url);
     let provider = ProviderBuilder::new().on_ws(ws).await?;
-    let mut smart_moneys = AddressHashSet::default();
+    let mut smart_moneys = Box::new(AddressHashSet::default());
     smart_moneys.insert(address!("aCab087f7f0977c31d68E8BAe117069a90Dc6574"));
-    let smart_moneys = Arc::new(smart_moneys);
+
+    unsafe {
+        SMART_MONEYS = Some(Box::leak(smart_moneys));
+    }
 
     println!("connect to {rpc_url}");
 
@@ -53,7 +57,6 @@ async fn main() -> Result<()> {
         }
 
         let provider = provider.clone();
-        let smart_moneys = smart_moneys.clone();
 
         tokio::spawn(async move {
             let provider = provider.lock().await;
@@ -61,9 +64,15 @@ async fn main() -> Result<()> {
             let transactions = provider.get_block_receipts(BlockId::from(block.header.hash)).await;
             if let Ok(Some(transactions)) = transactions {
                 for transaction in transactions {
-                    if smart_moneys.contains(&transaction.from) {
-                        println!("smart money {} has a transaction {}", transaction.from, transaction.transaction_hash);
+                    let mut is_smart_money = false;
+                    unsafe {
+                        if let Some(smart_moneys) = SMART_MONEYS {
+                            is_smart_money = smart_moneys.contains(&transaction.from);
+                        }
+                    }
 
+                    if is_smart_money {
+                        println!("smart money {} has a transaction {}", transaction.from, transaction.transaction_hash);
                         send_email(transaction.from, transaction.transaction_hash).await;
                     }
                 }
