@@ -12,6 +12,8 @@ const EMAIL_RECEIVER: &str = "email receiver";
 const EMAIL_SENDER: &str = "email sender";
 const SMTP_SERVER: &str = "smtp server";
 const EMAIL_PASSWORD: &str = "password";
+const RPC_URL: &str = "websocket url to Ethereum";
+
 
 static mut SMART_MONEYS: Option<&AddressHashSet> = None;
 
@@ -34,10 +36,9 @@ async fn send_email(smart_money: Address, tx_hash: TxHash) {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let rpc_url = "wss://eth-mainnet.g.alchemy.com/v2/LttRLGRc066mddQWggs0tttdq9FwmTZh";  // mainnet
-    let ws = WsConnect::new(rpc_url);
+    let ws = WsConnect::new(RPC_URL);
     let provider = ProviderBuilder::new().on_ws(ws).await?;
-    println!("connect to {rpc_url}");
+    println!("connect to {RPC_URL}");
 
     let mut smart_moneys = Box::new(AddressHashSet::default());
     smart_moneys.insert(address!("aCab087f7f0977c31d68E8BAe117069a90Dc6574"));
