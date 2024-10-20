@@ -37,14 +37,14 @@ async fn main() -> Result<()> {
     let rpc_url = "wss://eth-mainnet.g.alchemy.com/v2/LttRLGRc066mddQWggs0tttdq9FwmTZh";  // mainnet
     let ws = WsConnect::new(rpc_url);
     let provider = ProviderBuilder::new().on_ws(ws).await?;
+    println!("connect to {rpc_url}");
+
     let mut smart_moneys = Box::new(AddressHashSet::default());
     smart_moneys.insert(address!("aCab087f7f0977c31d68E8BAe117069a90Dc6574"));
 
     unsafe {
         SMART_MONEYS = Some(Box::leak(smart_moneys));
     }
-
-    println!("connect to {rpc_url}");
 
     let sub = provider.subscribe_blocks().await?;
     let mut stream = sub.into_stream();
