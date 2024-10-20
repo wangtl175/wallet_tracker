@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use alloy::eips::BlockId;
 use alloy::primitives::{address, Address, map::AddressHashSet, TxHash};
 use anyhow::Result;
@@ -6,7 +5,6 @@ use alloy::providers::{Provider, ProviderBuilder, WsConnect};
 use futures_util::StreamExt;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use lettre::transport::smtp::authentication::Credentials;
-use tokio::sync::Mutex;
 
 const EMAIL_RECEIVER: &str = "email receiver";
 const EMAIL_SENDER: &str = "email sender";
@@ -50,8 +48,6 @@ async fn main() -> Result<()> {
     let sub = provider.subscribe_blocks().await?;
     let mut stream = sub.into_stream();
 
-    let provider = Arc::new(Mutex::new(provider));
-
     while let Some(block) = stream.next().await {
         if block.header.number % 100 == 0 {
             println!("Received block number: {}", block.header.number);
@@ -60,8 +56,6 @@ async fn main() -> Result<()> {
         let provider = provider.clone();
 
         tokio::spawn(async move {
-            let provider = provider.lock().await;
-
             let transactions = provider.get_block_receipts(BlockId::from(block.header.hash)).await;
             if let Ok(Some(transactions)) = transactions {
                 for transaction in transactions {
