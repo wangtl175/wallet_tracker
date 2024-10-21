@@ -5,8 +5,8 @@ use alloy::providers::{Provider, ProviderBuilder, WsConnect};
 use futures_util::StreamExt;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use lettre::transport::smtp::authentication::Credentials;
+use std::collections::HashSet;
 
-const EMAIL_RECEIVER: &str = "email receiver";
 const EMAIL_SENDER: &str = "email sender";
 const SMTP_SERVER: &str = "smtp server";
 const EMAIL_PASSWORD: &str = "password";
@@ -14,21 +14,28 @@ const RPC_URL: &str = "websocket url to Ethereum";
 
 
 static mut SMART_MONEYS: Option<&AddressHashSet> = None;
+static mut EMAIL_RECEIVERS: Option<&HashSet<&str>> = None;
 
 async fn send_email(smart_money: Address, tx_hash: TxHash) {
-    let email = Message::builder()
-        .from(EMAIL_SENDER.parse().unwrap())
-        .to(EMAIL_RECEIVER.parse().unwrap())
-        .subject("Smart Money Transaction")
-        .body(format!("smart money {} has a transaction {}", smart_money, tx_hash))
-        .unwrap();
+    if unsafe { EMAIL_RECEIVERS.is_none() } {
+        return;
+    }
 
     let creds = Credentials::new(EMAIL_SENDER.to_string(), EMAIL_PASSWORD.to_string());
-
     let mailer: AsyncSmtpTransport<Tokio1Executor> = AsyncSmtpTransport::<Tokio1Executor>::relay(SMTP_SERVER).unwrap().credentials(creds).build();
 
-    if let Err(e) = mailer.send(email).await {
-        println!("Could not send email: {e:?}");
+    let email_receivers = unsafe { EMAIL_RECEIVERS.unwrap() };
+    for email_receiver in email_receivers.iter() {
+        let email = Message::builder()
+            .from(EMAIL_SENDER.parse().unwrap())
+            .to(email_receiver.parse().unwrap())
+            .subject("Smart Money Transaction")
+            .body(format!("smart money {} has a transaction {}", smart_money, tx_hash))
+            .unwrap();
+
+        if let Err(e) = mailer.send(email).await {
+            println!("Could not send email: {e:?}");
+        }
     }
 }
 
@@ -45,6 +52,13 @@ async fn main() -> Result<()> {
         SMART_MONEYS = Some(Box::leak(smart_moneys));
     }
 
+    let mut email_receivers = Box::new(HashSet::new());
+    email_receivers.insert("email receiver");
+
+    unsafe {
+        EMAIL_RECEIVERS = Some(Box::leak(email_receivers));
+    }
+
     let sub = provider.subscribe_blocks().await?;
     let mut stream = sub.into_stream();
 
@@ -59,12 +73,13 @@ async fn main() -> Result<()> {
             let transactions = provider.get_block_receipts(BlockId::from(block.header.hash)).await;
             if let Ok(Some(transactions)) = transactions {
                 for transaction in transactions {
-                    let mut is_smart_money = false;
-                    unsafe {
+                    let is_smart_money = unsafe {
                         if let Some(smart_moneys) = SMART_MONEYS {
-                            is_smart_money = smart_moneys.contains(&transaction.from);
+                            smart_moneys.contains(&transaction.from)
+                        } else {
+                            false
                         }
-                    }
+                    };
 
                     if is_smart_money {
                         println!("smart money {} has a transaction {}", transaction.from, transaction.transaction_hash);
@@ -83,5 +98,14 @@ async fn test_send_email() {
     let smart_money = address!("aCab087f7f0977c31d68E8BAe117069a90Dc6574");
     let tx_hash = [6u8; 32];
     let tx_hash = TxHash::from(&tx_hash);
+
+    let mut email_receivers = Box::new(HashSet::new());
+    email_receivers.insert("receiver1@gmail.com");
+    email_receivers.insert("receiver2@gmail.com");
+
+    unsafe {
+        EMAIL_RECEIVERS = Some(Box::leak(email_receivers));
+    }
+
     send_email(smart_money, tx_hash).await;
 }
